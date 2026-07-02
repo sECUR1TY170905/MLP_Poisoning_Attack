@@ -18,12 +18,24 @@ from torch.utils.data import DataLoader, TensorDataset
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 import matplotlib
-matplotlib.use('Agg')   # non-interactive backend – no GUI window needed
+matplotlib.use('Agg')   # non-interactive backend - no GUI window needed
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 import copy
 import warnings
 warnings.filterwarnings('ignore')
+
+# ── Rich console ──────────────────────────────────────────────────────────────
+from rich.console import Console
+from rich.panel import Panel
+from rich.table import Table
+from rich.progress import Progress, BarColumn, TextColumn, TimeElapsedColumn
+from rich import box
+from rich.text import Text
+from rich.columns import Columns
+from rich.rule import Rule
+
+console = Console()
 
 # ── Matplotlib style ──────────────────────────────────────────────────────────
 plt.rcParams.update({
@@ -42,11 +54,11 @@ plt.rcParams.update({
 COLORS = ['#00d4ff', '#ff6b6b', '#ffd166', '#06d6a0', '#e040fb', '#ff9800']
 
 # =============================================================================
-# STEP 1 – Load dataset
+# STEP 1 - Load dataset
 # =============================================================================
-print("=" * 60)
-print("STEP 1: Loading dataset (number-3.txt)")
-print("=" * 60)
+console.print()
+console.print(Panel("[bold cyan]STEP 1 : Loading Dataset  [white]number-3.txt[/white][/bold cyan]",
+                    style="bold blue", box=box.DOUBLE_EDGE))
 
 DATA_FILE = 'number-3.txt'
 data = []
@@ -59,30 +71,37 @@ data = np.array(data)
 X = data[:, :16]   # 16 health indicators
 y = data[:, 16]    # label: 1.0 = healthy, 0.0 = sick
 
-print(f"  Total samples      : {len(data)}")
-print(f"  Features per sample: {X.shape[1]}")
-print(f"  Class distribution : Healthy(1.0)={int(y.sum())}  |  Sick(0.0)={int((y==0).sum())}")
+t1 = Table(show_header=False, box=box.SIMPLE, padding=(0, 2))
+t1.add_column("Key",   style="bold bright_white", no_wrap=True)
+t1.add_column("Value", style="bright_green")
+t1.add_row("Total samples",       str(len(data)))
+t1.add_row("Features per sample", str(X.shape[1]))
+t1.add_row("Healthy (1.0)",       str(int(y.sum())))
+t1.add_row("Sick    (0.0)",       str(int((y == 0).sum())))
+console.print(t1)
 
 # =============================================================================
-# STEP 2 – Split 80/20 with stratification
+# STEP 2 - Split 80/20 with stratification
 # =============================================================================
-print("\n" + "=" * 60)
-print("STEP 2: Train/Test split (80/20, stratified)")
-print("=" * 60)
+console.print(Panel("[bold cyan]STEP 2 : Train / Test Split  [white]80% / 20%  |  Stratified[/white][/bold cyan]",
+                    style="bold blue", box=box.DOUBLE_EDGE))
 
 X_train_raw, X_test_raw, y_train, y_test = train_test_split(
     X, y, test_size=0.2, random_state=42, stratify=y
 )
 
-# Normalize features
-scaler = StandardScaler()
+scaler  = StandardScaler()
 X_train = scaler.fit_transform(X_train_raw)
 X_test  = scaler.transform(X_test_raw)
 
-print(f"  Training samples: {len(X_train)}")
-print(f"  Test samples    : {len(X_test)}")
-print(f"  Train class dist: Healthy={int(y_train.sum())}  Sick={int((y_train==0).sum())}")
-print(f"  Test  class dist: Healthy={int(y_test.sum())}   Sick={int((y_test==0).sum())}")
+t2 = Table(show_header=True, box=box.SIMPLE_HEAVY, padding=(0, 2))
+t2.add_column("Split", style="bold bright_white", justify="left")
+t2.add_column("Samples",  style="bright_cyan",  justify="right")
+t2.add_column("Healthy",  style="bright_green", justify="right")
+t2.add_column("Sick",     style="bright_red",   justify="right")
+t2.add_row("Train", str(len(X_train)), str(int(y_train.sum())), str(int((y_train == 0).sum())))
+t2.add_row("Test",  str(len(X_test)),  str(int(y_test.sum())),  str(int((y_test  == 0).sum())))
+console.print(t2)
 
 # ── Tensor helpers ────────────────────────────────────────────────────────────
 def to_tensors(X, y):
@@ -91,11 +110,10 @@ def to_tensors(X, y):
     return Xt, yt
 
 # =============================================================================
-# STEP 3 – Define MLP: input(16) -> 64 -> 32 -> 16 -> output(1)
+# STEP 3 - Define MLP: input(16) -> 64 -> 32 -> 16 -> output(1)
 # =============================================================================
-print("\n" + "=" * 60)
-print("STEP 3: Define & train MLP (16->64->32->16->1)")
-print("=" * 60)
+console.print(Panel("[bold cyan]STEP 3 : Define & Train MLP  [white]16 -> 64 -> 32 -> 16 -> 1[/white][/bold cyan]",
+                    style="bold blue", box=box.DOUBLE_EDGE))
 
 class MLP(nn.Module):
     def __init__(self):
@@ -111,9 +129,10 @@ class MLP(nn.Module):
         return self.net(x)
 
 
-def train_model(X_tr, y_tr, epochs=100, lr=1e-3, batch_size=64, verbose=True):
+def train_model(X_tr, y_tr, epochs=100, lr=1e-3, batch_size=64,
+                verbose=True, label="Training"):
     """Train MLP and return (model, train_loss_history)."""
-    Xt, yt = to_tensors(X_tr, y_tr)
+    Xt, yt  = to_tensors(X_tr, y_tr)
     loader  = DataLoader(TensorDataset(Xt, yt), batch_size=batch_size, shuffle=True)
 
     model     = MLP()
@@ -122,19 +141,42 @@ def train_model(X_tr, y_tr, epochs=100, lr=1e-3, batch_size=64, verbose=True):
     scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=30, gamma=0.5)
 
     losses = []
-    for epoch in range(epochs):
-        model.train()
-        epoch_loss = 0.0
-        for xb, yb in loader:
-            optimizer.zero_grad()
-            loss = criterion(model(xb), yb)
-            loss.backward()
-            optimizer.step()
-            epoch_loss += loss.item() * len(xb)
-        scheduler.step()
-        losses.append(epoch_loss / len(Xt))
-        if verbose and (epoch + 1) % 20 == 0:
-            print(f"    Epoch {epoch+1:3d}/{epochs}  loss={losses[-1]:.4f}")
+
+    if verbose:
+        with Progress(
+            TextColumn("  [progress.description]{task.description}"),
+            BarColumn(bar_width=30, style="cyan", complete_style="bright_cyan"),
+            TextColumn("[bold white]{task.percentage:>5.1f}%"),
+            TextColumn("[dim]loss=[bold yellow]{task.fields[loss]:.4f}[/bold yellow]"),
+            TimeElapsedColumn(),
+            console=console,
+            transient=False,
+        ) as progress:
+            task = progress.add_task(label, total=epochs, loss=0.0)
+            for epoch in range(epochs):
+                model.train()
+                epoch_loss = 0.0
+                for xb, yb in loader:
+                    optimizer.zero_grad()
+                    loss = criterion(model(xb), yb)
+                    loss.backward()
+                    optimizer.step()
+                    epoch_loss += loss.item() * len(xb)
+                scheduler.step()
+                losses.append(epoch_loss / len(Xt))
+                progress.update(task, advance=1, loss=losses[-1])
+    else:
+        for epoch in range(epochs):
+            model.train()
+            epoch_loss = 0.0
+            for xb, yb in loader:
+                optimizer.zero_grad()
+                loss = criterion(model(xb), yb)
+                loss.backward()
+                optimizer.step()
+                epoch_loss += loss.item() * len(xb)
+            scheduler.step()
+            losses.append(epoch_loss / len(Xt))
 
     return model, losses
 
@@ -150,17 +192,26 @@ def evaluate(model, X_ev, y_ev):
 
 
 # Train on CLEAN data
-print("  Training on CLEAN dataset…")
-model_clean, clean_losses = train_model(X_train, y_train)
+console.print("  [bold white]Training on [bright_green]CLEAN[/bright_green] dataset...[/bold white]")
+model_clean, clean_losses = train_model(X_train, y_train, label="Clean   ")
 acc_clean = evaluate(model_clean, X_test, y_test)
-print(f"\n  [OK] Accuracy (clean model): {acc_clean:.2f}%")
+console.print(f"  [bold bright_green]ACCURACY (clean model) : {acc_clean:.2f}%[/bold bright_green]\n")
+
+def fmt_diff(a):
+    """Format accuracy difference vs clean baseline with color."""
+    d = a - acc_clean
+    if d > 0:
+        return f"[bold bright_green]Diff vs Clean : +{d:.2f}%[/bold bright_green]"
+    elif d < 0:
+        return f"[bold bright_red]Diff vs Clean :  {d:.2f}%[/bold bright_red]"
+    else:
+        return f"[bold white]Diff vs Clean :  0.00% (no change)[/bold white]"
 
 # =============================================================================
-# STEPS 4-6 – Poison training set (label flip, N=50%)
+# STEPS 4-6 - Poison training set (label flip, N=50%)
 # =============================================================================
-print("\n" + "=" * 60)
-print("STEPS 4-6: Label-flip poisoning @ N=50%")
-print("=" * 60)
+console.print(Panel("[bold cyan]STEPS 4-6 : Label-Flip Poisoning  [white]N = 50%[/white][/bold cyan]",
+                    style="bold blue", box=box.DOUBLE_EDGE))
 
 
 def poison_labels(X_tr, y_tr, pct):
@@ -169,18 +220,18 @@ def poison_labels(X_tr, y_tr, pct):
     y_p = y_tr.copy()
     n_poison = max(1, int(len(y_p) * pct / 100))
     idx = np.random.choice(len(y_p), n_poison, replace=False)
-    y_p[idx] = 1.0 - y_p[idx]   # flip 0↔1
+    y_p[idx] = 1.0 - y_p[idx]   # flip 0<->1
     return X_p, y_p, n_poison
 
 
 np.random.seed(42)
 X_p50, y_p50, n50 = poison_labels(X_train, y_train, 50)
-print(f"  Poisoned {n50} samples (50% of {len(y_train)})")
-print("  Training on POISONED dataset…")
-model_p50, p50_losses = train_model(X_p50, y_p50)
+console.print(f"  [yellow]Poisoned [bold]{n50}[/bold] samples  (50% of {len(y_train)})[/yellow]")
+console.print("  [bold white]Training on [bright_red]POISONED[/bright_red] dataset...[/bold white]")
+model_p50, p50_losses = train_model(X_p50, y_p50, label="Poison 50%")
 acc_p50 = evaluate(model_p50, X_test, y_test)
-print(f"\n  [OK] Accuracy (50% poisoned): {acc_p50:.2f}%")
-print(f"  [DROP] Drop: {acc_clean - acc_p50:.2f}%")
+console.print(f"  [bold bright_red]ACCURACY (50% poisoned) : {acc_p50:.2f}%[/bold bright_red]")
+console.print(f"  {fmt_diff(acc_p50)}\n")
 
 # ── Picture 1 ─────────────────────────────────────────────────────────────────
 fig, ax = plt.subplots(figsize=(8, 5))
@@ -191,36 +242,36 @@ for bar, val in zip(bars, [acc_clean, acc_p50]):
             f'{val:.2f}%', ha='center', va='bottom', fontsize=13, fontweight='bold', color='white')
 ax.set_ylim(0, 115)
 ax.set_ylabel('Accuracy (%)', fontsize=12)
-ax.set_title('Picture 1 – Clean vs. Poisoned (50%) Accuracy', fontsize=14, fontweight='bold', color='#00d4ff')
+ax.set_title('Picture 1 - Clean vs. Poisoned (50%) Accuracy', fontsize=14, fontweight='bold', color='#00d4ff')
 ax.grid(axis='y')
 plt.tight_layout()
 plt.savefig('picture1_clean_vs_poisoned.png', dpi=150, bbox_inches='tight')
 plt.close()
-print("  Saved: picture1_clean_vs_poisoned.png")
+console.print("  [dim]Saved: picture1_clean_vs_poisoned.png[/dim]")
 
 # =============================================================================
-# STEPS 7-9 – b=2 -> DECREASE poisoning by 10/20/30 percent
+# STEPS 7-9 - b=2 -> DECREASE poisoning by 10/20/30 percent
 # =============================================================================
-print("\n" + "=" * 60)
-print("STEPS 7-9: b=2 -> Decrease poisoning (40%, 30%, 20%)")
-print("=" * 60)
+console.print()
+console.print(Panel("[bold cyan]STEPS 7-9 : Decreasing Poison  [white]b=2  ->  50% -> 40% -> 30% -> 20%[/white][/bold cyan]",
+                    style="bold blue", box=box.DOUBLE_EDGE))
 
-pcts_b2  = [50, 40, 30, 20]   # 50-10, 50-20, 50-30
-accs_b2  = [acc_p50]
+pcts_b2   = [50, 40, 30, 20]
+accs_b2   = [acc_p50]
 labels_b2 = ['50%']
 
 for pct in [40, 30, 20]:
     np.random.seed(42)
     Xp, yp, n = poison_labels(X_train, y_train, pct)
-    print(f"\n  Poisoning @ {pct}%  ({n} samples) …")
+    console.print(f"  [yellow]Poisoning @ [bold]{pct}%[/bold]  ({n} samples)...[/yellow]")
     m, _ = train_model(Xp, yp, verbose=False)
     a = evaluate(m, X_test, y_test)
     accs_b2.append(a)
     labels_b2.append(f'{pct}%')
-    print(f"  [OK] Accuracy: {a:.2f}%")
+    console.print(f"  [bright_green]Accuracy : {a:.2f}%[/bright_green]  |  {fmt_diff(a)}")
 
-print(f"\n  Clean baseline: {acc_clean:.2f}%")
-accs_b2_full  = [acc_clean] + accs_b2
+console.print(f"\n  [bright_white]Clean baseline : [bold green]{acc_clean:.2f}%[/bold green][/bright_white]")
+accs_b2_full   = [acc_clean] + accs_b2
 labels_b2_full = ['Clean(0%)'] + labels_b2
 
 # ── Picture 2 ─────────────────────────────────────────────────────────────────
@@ -234,58 +285,60 @@ ax.set_xticks(x)
 ax.set_xticklabels(labels_b2_full, fontsize=11)
 ax.set_ylim(0, 115)
 ax.set_ylabel('Accuracy (%)', fontsize=12)
-ax.set_title('Picture 2 – Accuracy vs. Poisoning % (b=2: decreasing)', fontsize=14, fontweight='bold', color='#00d4ff')
+ax.set_title('Picture 2 - Accuracy vs. Poisoning % (b=2: decreasing)', fontsize=14, fontweight='bold', color='#00d4ff')
 ax.grid(axis='y')
 plt.tight_layout()
 plt.savefig('picture2_decreasing_poison.png', dpi=150, bbox_inches='tight')
 plt.close()
-print("  Saved: picture2_decreasing_poison.png")
+console.print("  [dim]Saved: picture2_decreasing_poison.png[/dim]")
 
 # =============================================================================
-# STEP 10 – Poison at 1% and 1 single row
+# STEP 10 - Poison at 1% and 1 single row
 # =============================================================================
-print("\n" + "=" * 60)
-print("STEP 10: Tiny poisoning (1% and 1 single row)")
-print("=" * 60)
+console.print()
+console.print(Panel("[bold cyan]STEP 10 : Tiny Poisoning  [white]1%  and  1 single row[/white][/bold cyan]",
+                    style="bold blue", box=box.DOUBLE_EDGE))
 
 np.random.seed(42)
 Xp1pct, yp1pct, n1pct = poison_labels(X_train, y_train, 1)
-print(f"  Poisoning @ 1%  ({n1pct} samples) …")
+console.print(f"  [yellow]Poisoning @ 1%  ({n1pct} samples)...[/yellow]")
 m1pct, _ = train_model(Xp1pct, yp1pct, verbose=False)
 acc_1pct  = evaluate(m1pct, X_test, y_test)
-print(f"  [OK] Accuracy: {acc_1pct:.2f}%")
+console.print(f"  [bright_green]Accuracy : {acc_1pct:.2f}%[/bright_green]  |  {fmt_diff(acc_1pct)}")
 
 # Single row
 np.random.seed(42)
 Xp1row, yp1row, _ = poison_labels(X_train, y_train, 0.0)   # no poison
 y_1row = yp1row.copy()
 y_1row[0] = 1.0 - y_1row[0]                                 # flip exactly 1 row
-print(f"\n  Poisoning 1 single row …")
+console.print(f"\n  [yellow]Poisoning 1 single row...[/yellow]")
 m1row, _ = train_model(Xp1row, y_1row, verbose=False)
 acc_1row  = evaluate(m1row, X_test, y_test)
-print(f"  [OK] Accuracy: {acc_1row:.2f}%")
+console.print(f"  [bright_green]Accuracy : {acc_1row:.2f}%[/bright_green]  |  {fmt_diff(acc_1row)}")
 
 # =============================================================================
-# STEP 11 (*) – Extreme poisoning 99% and 100%
+# STEP 11 (*) - Extreme poisoning 99% and 100%
 # =============================================================================
-print("\n" + "=" * 60)
-print("STEP 11 (*): Extreme poisoning (99% and 100%)")
-print("=" * 60)
+console.print()
+console.print(Panel("[bold cyan]STEP 11 (*) : Extreme Poisoning  [white]99%  and  100%[/white][/bold cyan]",
+                    style="bold blue", box=box.DOUBLE_EDGE))
 
 for pct in [99, 100]:
     np.random.seed(42)
     Xp, yp, n = poison_labels(X_train, y_train, pct)
-    print(f"\n  Poisoning @ {pct}%  ({n} samples) …")
+    console.print(f"  [yellow]Poisoning @ [bold]{pct}%[/bold]  ({n} samples)...[/yellow]")
     m, _ = train_model(Xp, yp, verbose=False)
     a = evaluate(m, X_test, y_test)
-    print(f"  [OK] Accuracy: {a:.2f}%  <- {'inverted!' if a < 40 else 'surprising?'}")
+    tag = "[bold red]<-- INVERTED![/bold red]" if a < 40 else "[bold yellow]<-- surprising?[/bold yellow]"
+    console.print(f"  [bright_red]Accuracy : {a:.2f}%[/bright_red]  {tag}")
+    console.print(f"  {fmt_diff(a)}")
 
 # =============================================================================
-# STEPS 12-14 – Feature-shuffle poisoning
+# STEPS 12-14 - Feature-shuffle poisoning
 # =============================================================================
-print("\n" + "=" * 60)
-print("STEPS 12-14: Feature-shuffle poisoning")
-print("=" * 60)
+console.print()
+console.print(Panel("[bold cyan]STEPS 12-14 : Feature-Shuffle Poisoning  [white]vs  Label-Flip[/white][/bold cyan]",
+                    style="bold blue", box=box.DOUBLE_EDGE))
 
 
 def poison_features(X_tr, y_tr, pct):
@@ -299,28 +352,41 @@ def poison_features(X_tr, y_tr, pct):
     return X_p, y_p, n_poison
 
 
-pcts_feat   = [50, 40, 30, 20, 1]
-accs_feat   = []
-accs_label  = []
+pcts_feat  = [50, 40, 30, 20, 1]
+accs_feat  = []
+accs_label = []
 
-print("\n  Comparing label-flip vs feature-shuffle:")
-print(f"  {'Poison%':>8}  {'Label-flip Acc':>16}  {'Feature-shuffle Acc':>20}")
-print("  " + "-" * 50)
+tcomp = Table(title="[bold white]Label-Flip vs Feature-Shuffle Accuracy[/bold white]",
+              box=box.ROUNDED, show_lines=True, padding=(0, 2))
+tcomp.add_column("Poison %",            style="bold white",        justify="center")
+tcomp.add_column("Label-flip Acc",      style="bold bright_red",   justify="center")
+tcomp.add_column("Diff vs Clean",       style="bold bright_red",   justify="center")
+tcomp.add_column("Feature-shuffle Acc", style="bold bright_yellow", justify="center")
+tcomp.add_column("Diff vs Clean",       style="bold bright_yellow", justify="center")
+tcomp.add_column("Lbl vs Feat Diff",    style="bold bright_cyan",  justify="center")
 
 for pct in pcts_feat:
     np.random.seed(42)
-    Xpl, ypl, _  = poison_labels(X_train, y_train, pct)
-    ml, _         = train_model(Xpl, ypl, verbose=False)
-    al            = evaluate(ml, X_test, y_test)
+    Xpl, ypl, _ = poison_labels(X_train, y_train, pct)
+    ml, _        = train_model(Xpl, ypl, verbose=False)
+    al           = evaluate(ml, X_test, y_test)
 
     np.random.seed(42)
-    Xpf, ypf, _  = poison_features(X_train, y_train, pct)
-    mf, _         = train_model(Xpf, ypf, verbose=False)
-    af            = evaluate(mf, X_test, y_test)
+    Xpf, ypf, _ = poison_features(X_train, y_train, pct)
+    mf, _        = train_model(Xpf, ypf, verbose=False)
+    af           = evaluate(mf, X_test, y_test)
 
     accs_label.append(al)
     accs_feat.append(af)
-    print(f"  {pct:>7}%  {al:>15.2f}%  {af:>19.2f}%")
+    dl   = al - acc_clean
+    df   = af - acc_clean
+    diff = af - al
+    dl_str   = f"{dl:+.2f}%"
+    df_str   = f"{df:+.2f}%"
+    diff_str = f"{diff:+.2f}%"
+    tcomp.add_row(f"{pct}%", f"{al:.2f}%", dl_str, f"{af:.2f}%", df_str, diff_str)
+
+console.print(tcomp)
 
 # ── Comparison chart ──────────────────────────────────────────────────────────
 fig, ax = plt.subplots(figsize=(10, 5))
@@ -338,29 +404,39 @@ ax.set_xticklabels([f'{p}%' for p in pcts_feat])
 ax.set_ylim(0, 115)
 ax.set_xlabel('Poisoning percentage', fontsize=12)
 ax.set_ylabel('Accuracy (%)', fontsize=12)
-ax.set_title('Steps 12-14 – Label-flip vs. Feature-shuffle Poisoning', fontsize=14, fontweight='bold', color='#00d4ff')
+ax.set_title('Steps 12-14 - Label-flip vs. Feature-shuffle Poisoning', fontsize=14, fontweight='bold', color='#00d4ff')
 ax.legend(fontsize=11)
 ax.grid(axis='y')
 plt.tight_layout()
 plt.savefig('picture3_labelflip_vs_featureshuffle.png', dpi=150, bbox_inches='tight')
 plt.close()
-print("\n  Saved: picture3_labelflip_vs_featureshuffle.png")
+console.print("  [dim]Saved: picture3_labelflip_vs_featureshuffle.png[/dim]")
 
 # =============================================================================
 # SUMMARY TABLE
 # =============================================================================
-print("\n" + "=" * 60)
-print("FINAL SUMMARY – VARIANT 9")
-print("=" * 60)
-print(f"  {'Experiment':<35} {'Accuracy':>10}")
-print("  " + "-" * 47)
-print(f"  {'Clean model':<35} {acc_clean:>9.2f}%")
-print(f"  {'Label-flip 50% (N=50%)':<35} {acc_p50:>9.2f}%")
-for lbl, acc in zip(labels_b2, accs_b2):
-    print(f"  {'Label-flip ' + lbl:<35} {acc:>9.2f}%")
-print(f"  {'Label-flip 1%':<35} {acc_1pct:>9.2f}%")
-print(f"  {'Label-flip 1 row':<35} {acc_1row:>9.2f}%")
-print("=" * 60)
+console.print()
+console.print(Panel("[bold bright_white]FINAL SUMMARY  --  VARIANT 9[/bold bright_white]",
+                    style="bold magenta", box=box.DOUBLE_EDGE))
+
+summary = Table(box=box.ROUNDED, show_lines=True, padding=(0, 2),
+                title="[bold white]All Experiments[/bold white]")
+summary.add_column("Experiment",   style="bold white",        justify="left")
+summary.add_column("Accuracy",     style="bold bright_green", justify="right")
+summary.add_column("vs Clean",     style="bold bright_red",   justify="right")
+
+def delta(a):
+    d = a - acc_clean
+    return f"{d:+.2f}%" if d != 0 else "[green]baseline[/green]"
+
+summary.add_row("Clean model",             f"{acc_clean:.2f}%", "[green]baseline[/green]")
+summary.add_row("Label-flip 50% (N=50%)", f"{acc_p50:.2f}%",  delta(acc_p50))
+for lbl, acc in zip(labels_b2[1:], accs_b2[1:]):   # skip 50% already added above
+    summary.add_row(f"Label-flip {lbl}", f"{acc:.2f}%", delta(acc))
+summary.add_row("Label-flip 1%",          f"{acc_1pct:.2f}%", delta(acc_1pct))
+summary.add_row("Label-flip 1 row",       f"{acc_1row:.2f}%", delta(acc_1row))
+
+console.print(summary)
 
 # ── Training loss curves (clean vs 50% poisoned) ─────────────────────────────
 fig, ax = plt.subplots(figsize=(9, 4))
@@ -374,6 +450,9 @@ ax.grid(True)
 plt.tight_layout()
 plt.savefig('picture4_training_loss.png', dpi=150, bbox_inches='tight')
 plt.close()
-print("  Saved: picture4_training_loss.png")
+console.print("  [dim]Saved: picture4_training_loss.png[/dim]")
 
-print("\n[DONE] ALL STEPS COMPLETE! Check the saved PNG files for plots.")
+console.print()
+console.print(Panel("[bold bright_green]  ALL STEPS COMPLETE!  Check the saved PNG files for plots.  [/bold bright_green]",
+                    style="bold green", box=box.DOUBLE_EDGE))
+console.print()
